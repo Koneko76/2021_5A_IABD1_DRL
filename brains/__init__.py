@@ -20,6 +20,9 @@ class QSABrain:
     def train_single(self, s: np.ndarray, a: np.ndarray, target: float) -> float:
         raise NotImplementedError()
 
+    def train_batch(self, states: np.ndarray, actions: np.ndarray, targets: np.ndarray) -> float:
+        raise NotImplementedError()
+
 
 class SimpleMLPQSABrain(QSABrain):
     def __init__(self, state_dim: int, action_dim: int,
@@ -44,3 +47,6 @@ class SimpleMLPQSABrain(QSABrain):
 
     def train_single(self, s: np.ndarray, a: np.ndarray, target: float) -> float:
         return self.model.train_on_batch([np.array([s]), np.array([a])], np.array([target]))
+
+    def train_batch(self, states: np.ndarray, actions: np.ndarray, targets: np.ndarray) -> float:
+        return self.model.train_on_batch([states, actions], targets)

@@ -1,6 +1,9 @@
+from collections import deque
 from typing import Callable
 
 import numpy as np
+
+import random
 
 from brains import QSABrain
 from policies import tabular_uniform_random_policy
@@ -465,4 +468,196 @@ def episodic_semi_gradient_sarsa_control(
             a_idx = a_p_idx
             step += 1
 
+    return q_value_brain
+
+
+def off_policy_deep_monte_carlo_control(
+        deep_reset_func: Callable,
+        deep_get_state: Callable,
+        deep_get_all_action_description: Callable,
+        deep_is_terminal_func: Callable,
+        deep_step_func: Callable,
+        q_value_brain: QSABrain,
+        episodes_count: int = 50000,
+        max_steps_per_episode: int = 10,
+        epsilon: float = 0.2,
+        gamma: float = 0.99,
+) -> (np.ndarray, np.ndarray):
+    for episode_id in range(episodes_count):
+        deep_reset_func()
+
+        s_list = []
+        a_list = []
+        r_list = []
+        step_count = 0
+
+        while not deep_is_terminal_func() and step_count < max_steps_per_episode:
+            s = deep_get_state()
+            all_actions = deep_get_all_action_description()
+            q_s = q_value_brain.predict_batch_actions(s, all_actions)
+
+            rdm = np.random.random()
+            a_idx = np.random.choice(np.arange(len(all_actions))) if rdm < epsilon else np.argmax(q_s)
+            a = all_actions[a_idx]
+
+            r, t = deep_step_func(a_idx)
+
+            s_list.append(s)
+            a_list.append(a)
+            r_list.append(r)
+
+            step_count += 1
+
+        G = 0
+        loss = 0
+        for t in reversed(range(len(s_list))):
+            G = gamma * G + r_list[t]
+            st = s_list[t]
+            at = a_list[t]
+
+            loss += q_value_brain.train_single(st, at, G)
+        loss /= len(s_list)
+
+        print(f'{episode_id} ¤¤¤ {loss}')
+    return q_value_brain
+
+
+def deep_q_learning_without_experience_replay_control(
+        deep_reset_func: Callable,
+        deep_get_state: Callable,
+        deep_get_all_action_description: Callable,
+        deep_is_terminal_func: Callable,
+        deep_step_func: Callable,
+        q_value_brain: QSABrain,
+        episodes_count: int = 50000,
+        max_steps_per_episode: int = 10,
+        epsilon: float = 0.2,
+        gamma: float = 0.99,
+) -> (np.ndarray, np.ndarray):
+    must_stop = False
+    for episode_id in range(episodes_count):
+
+        if must_stop:
+            break
+
+        deep_reset_func()
+
+        step_count = 0
+        loss = 0
+        cumulated_reward = 0
+
+        while not deep_is_terminal_func() and step_count < max_steps_per_episode:
+            s = deep_get_state()
+            all_actions = deep_get_all_action_description()
+            q_s = q_value_brain.predict_batch_actions(s, all_actions)
+
+            rdm = np.random.random()
+            a_idx = np.random.choice(np.arange(len(all_actions))) if rdm < epsilon else np.argmax(q_s)
+            a = all_actions[a_idx]
+
+            r, t = deep_step_func(a_idx)
+            cumulated_reward += r
+
+            s_p = deep_get_state()
+
+            target = r
+
+            if not t:
+                all_actions_p = deep_get_all_action_description()
+                q_s_p = q_value_brain.predict_batch_actions(s_p, all_actions_p)
+                target += gamma * np.max(q_s_p)
+
+            loss += q_value_brain.train_single(s, a, target)
+
+            step_count += 1
+
+        loss /= step_count
+
+        print(f'{episode_id} ¤¤¤ {loss} ¤¤¤ {cumulated_reward}')
+    return q_value_brain
+
+
+def deep_q_learning_with_experience_replay_control(
+        deep_reset_func: Callable,
+        deep_get_state: Callable,
+        deep_get_all_action_description: Callable,
+        deep_is_terminal_func: Callable,
+        deep_step_func: Callable,
+        q_value_brain: QSABrain,
+        episodes_count: int = 50000,
+        max_steps_per_episode: int = 10,
+        epsilon: float = 0.2,
+        gamma: float = 0.99,
+        max_buffer_length: int = 512,
+        mini_batch_size: int = 32
+) -> (np.ndarray, np.ndarray):
+    buffer = deque(maxlen=max_buffer_length)
+    must_stop = False
+    for episode_id in range(episodes_count):
+
+        if must_stop:
+            break
+
+        deep_reset_func()
+
+        step_count = 0
+        cumulated_reward = 0
+
+        while not deep_is_terminal_func() and step_count < max_steps_per_episode:
+            s = deep_get_state()
+            all_actions = deep_get_all_action_description()
+            q_s = q_value_brain.predict_batch_actions(s, all_actions)
+
+            rdm = np.random.random()
+            a_idx = np.random.choice(np.arange(len(all_actions))) if rdm < epsilon else np.argmax(q_s)
+            a = all_actions[a_idx]
+
+            r, t = deep_step_func(a_idx)
+            cumulated_reward += r
+
+            s_p = deep_get_state()
+
+            buffer.append({
+                's': s,
+                'a': a,
+                'r': r,
+                's_p': s_p,
+                't': t,
+                'all_actions_p': deep_get_all_action_description()
+            })
+
+            if len(buffer) == max_buffer_length:
+                mini_batch = random.sample(buffer, mini_batch_size)
+                loss = 0
+                batch_states = []
+                batch_actions = []
+                batch_targets = []
+
+                for transition in mini_batch:
+                    st = transition['s']
+                    at = transition['a']
+                    rt = transition['r']
+                    st_p = transition['s_p']
+                    tt = transition['t']
+
+                    target = rt
+
+                    if not tt:
+                        all_actions_p = transition['all_actions_p']
+                        q_s_p = q_value_brain.predict_batch_actions(st_p, all_actions_p)
+                        target += gamma * np.max(q_s_p)
+
+                    batch_states.append(st)
+                    batch_actions.append(at)
+                    batch_targets.append(target)
+
+                loss = q_value_brain.train_batch(np.array(batch_states),
+                                                 np.array(batch_actions),
+                                                 np.array(batch_targets))
+
+                print(f'{loss}')
+
+            step_count += 1
+
+        print(f'{episode_id} ¤¤¤ {cumulated_reward}')
     return q_value_brain
