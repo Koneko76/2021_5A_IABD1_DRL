@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
     tf.compat.v1.disable_eager_execution()
 
-    brain = SimpleMLPQSABrain(27, 9, lr=0.0001)
+    brain = SimpleMLPQSABrain(27, 9, lr=0.00001, hidden_layers_count=3, neurons_per_hidden_layer=64)
     env = TicTacToeAgainstRandomEnv()
 
     deep_q_learning_with_experience_replay_control(
@@ -26,6 +26,8 @@ if __name__ == "__main__":
         brain,
         epsilon=0.5,
         episodes_count=10000,
+        mini_batch_size=128,
+        max_buffer_length=2048
     )
 
     env = TicTacToeAgainstRandomEnv()

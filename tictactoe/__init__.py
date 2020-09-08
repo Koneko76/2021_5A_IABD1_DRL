@@ -26,6 +26,11 @@ class TicTacToeAgainstRandomEnv:
     def deep_get_state(self) -> np.ndarray:
         return self.to_categorical(self.board, 3).flatten()
 
+    def deep_get_action_mask(self) -> np.ndarray:
+        mask = np.zeros((9,))
+        mask[self.available_actions] = 1.0
+        return mask
+
     def deep_get_available_actions(self) -> np.ndarray:
         return np.array(self.available_actions)
 
@@ -37,6 +42,9 @@ class TicTacToeAgainstRandomEnv:
 
     def deep_step_func(self, a: int) -> (float, bool):
         a = self.available_actions[a]
+        return self.deep_step_with_mask_func(a)
+
+    def deep_step_with_mask_func(self, a: int) -> (float, bool):
 
         a_i, a_j = a // 3, a % 3
         assert (self.board[a_i, a_j] == 0)

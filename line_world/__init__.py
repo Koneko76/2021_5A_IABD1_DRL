@@ -43,6 +43,9 @@ class LineWorldEnv:
     def deep_get_state(self) -> np.ndarray:
         return self.to_categorical(self.s, num_states)
 
+    def deep_get_action_mask(self) -> np.ndarray:
+        return np.array([1, 1])
+
     def deep_get_available_actions(self) -> np.ndarray:
         return np.array([0, 1])
 
@@ -54,5 +57,8 @@ class LineWorldEnv:
         return is_terminal(self.s)
 
     def deep_step(self, a: int) -> (float, bool):
+        return self.deep_step_with_mask(a)
+
+    def deep_step_with_mask(self, a: int) -> (float, bool):
         self.s, r, t = step(self.s, a)
         return r, t

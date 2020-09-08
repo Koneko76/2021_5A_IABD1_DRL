@@ -5,7 +5,7 @@ import numpy as np
 
 import random
 
-from brains import QSABrain
+from brains import QSABrain, PiSABrain, PiSWithMaskBrain
 from policies import tabular_uniform_random_policy
 from utils import step_until_the_end_of_the_episode_and_return_history
 
@@ -690,3 +690,116 @@ def deep_q_learning_with_experience_replay_control(
 
         print(f'{episode_id} ¤¤¤ {cumulated_reward}')
     return q_value_brain
+
+
+def reinforce_without_baseline(
+        deep_reset_func: Callable,
+        deep_get_state: Callable,
+        deep_get_all_action_description: Callable,
+        deep_is_terminal_func: Callable,
+        deep_step_func: Callable,
+        pi_brain: PiSABrain,
+        episodes_count: int = 50000,
+        max_steps_per_episode: int = 10,
+        gamma: float = 0.99
+) -> (np.ndarray, np.ndarray):
+    for episode_id in range(episodes_count):
+        deep_reset_func()
+
+        states = []
+        actions = []
+        rewards = []
+
+        cumulated_reward = 0
+
+        step = 0
+        while not deep_is_terminal_func() and step < max_steps_per_episode:
+            s = deep_get_state()
+            all_available_actions = deep_get_all_action_description()
+
+            pi = np.squeeze(pi_brain.predict_batch_actions(s, all_available_actions))
+            sum_pi = np.sum(pi)
+            if sum_pi == 0:
+                a_idx = np.random.choice(np.arange(len(all_available_actions)))
+            else:
+                a_idx = np.random.choice(np.arange(len(all_available_actions)),
+                                         p=pi / sum_pi)
+            r, t = deep_step_func(a_idx)
+
+            cumulated_reward += r
+            states.append(s)
+            actions.append(all_available_actions[a_idx])
+            rewards.append(r)
+
+            step += 1
+
+        loss = 0
+        G = 0
+        for t in reversed(range(len(states))):
+            st = states[t]
+            at = actions[t]
+            rt = rewards[t]
+
+            G = rt + gamma * G
+            loss += pi_brain.train_single(st, at, G)
+
+        print(f'{episode_id} ¤¤¤ {loss} ¤¤¤ {cumulated_reward}')
+
+
+def reinforce_with_mask_without_baseline(
+        deep_reset_func: Callable,
+        deep_get_state: Callable,
+        deep_get_action_mask: Callable,
+        deep_is_terminal_func: Callable,
+        deep_step_with_mask_func: Callable,
+        pi_brain: PiSWithMaskBrain,
+        episodes_count: int = 50000,
+        max_steps_per_episode: int = 10,
+        gamma: float = 0.99
+) -> (np.ndarray, np.ndarray):
+    for episode_id in range(episodes_count):
+        deep_reset_func()
+
+        states = []
+        action_indexes = []
+        masks = []
+        rewards = []
+
+        cumulated_reward = 0
+
+        step = 0
+        while not deep_is_terminal_func() and step < max_steps_per_episode:
+            s = deep_get_state()
+            m = deep_get_action_mask()
+
+            pi = pi_brain.predict(s, m)
+            sum_pi = np.sum(pi)
+            if sum_pi == 0:
+                a_idx = np.random.choice(np.arange(len(m)))
+            else:
+                a_idx = np.random.choice(np.arange(len(m)),
+                                         p=pi / sum_pi)
+            r, t = deep_step_with_mask_func(a_idx)
+
+            cumulated_reward += r
+            states.append(s)
+            action_indexes.append(a_idx)
+            masks.append(m)
+            rewards.append(r)
+
+            step += 1
+
+        loss = 0
+        G = 0
+        for t in reversed(range(len(states))):
+            st = states[t]
+            at_idx = action_indexes[t]
+            mt = masks[t]
+            rt = rewards[t]
+
+            G = rt + gamma * G
+            target = np.zeros_like(mt)
+            target[at_idx] = G
+            loss += pi_brain.train_single(st, mt, target)
+
+        print(f'{episode_id} ¤¤¤ {loss} ¤¤¤ {cumulated_reward}')
