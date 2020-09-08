@@ -30,12 +30,14 @@ class TicTacToeAgainstRandomEnv:
         return np.array(self.available_actions)
 
     def deep_get_all_available_action_description(self) -> np.ndarray:
-        return np.array(self.available_actions)
+        return self.to_categorical(np.array(self.available_actions), 9)
 
     def deep_is_terminal_func(self) -> bool:
         return self.game_over
 
     def deep_step_func(self, a: int) -> (float, bool):
+        a = self.available_actions[a]
+
         a_i, a_j = a // 3, a % 3
         assert (self.board[a_i, a_j] == 0)
 

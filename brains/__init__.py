@@ -17,6 +17,9 @@ class QSABrain:
     def predict_batch_actions(self, s: np.ndarray, all_actions: np.ndarray) -> np.ndarray:
         raise NotImplementedError()
 
+    def predict_batch(self, states: np.ndarray, actions: np.ndarray) -> np.ndarray:
+        raise NotImplementedError()
+
     def train_single(self, s: np.ndarray, a: np.ndarray, target: float) -> float:
         raise NotImplementedError()
 
@@ -41,6 +44,9 @@ class SimpleMLPQSABrain(QSABrain):
 
     def predict_batch_actions(self, s: np.ndarray, all_actions: np.ndarray) -> np.ndarray:
         return self.model.predict([np.tile(s, (len(all_actions), 1)), all_actions])
+
+    def predict_batch(self, states: np.ndarray, actions: np.ndarray) -> np.ndarray:
+        return self.model.predict([states, actions])
 
     def predict(self, s: np.ndarray, a: np.ndarray) -> float:
         return self.model.predict([np.array([s]), np.array([a])])[0][0]

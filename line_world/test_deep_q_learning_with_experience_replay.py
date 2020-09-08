@@ -10,7 +10,11 @@ from line_world import S, A, LineWorldEnv, num_states
 import numpy as np
 
 if __name__ == "__main__":
-    brain = SimpleMLPQSABrain(len(S), len(A), lr=0.001 * 32)
+    import tensorflow as tf
+
+    tf.compat.v1.disable_eager_execution()
+
+    brain = SimpleMLPQSABrain(len(S), len(A), lr=0.01)
     env = LineWorldEnv()
 
     deep_q_learning_with_experience_replay_control(

@@ -631,7 +631,13 @@ def deep_q_learning_with_experience_replay_control(
                 loss = 0
                 batch_states = []
                 batch_actions = []
-                batch_targets = []
+                batch_terminals_coef = []
+                batch_rewards = []
+
+                batch_next_states = []
+                batch_all_next_actions = []
+
+                batch_num_next_actions = []
 
                 for transition in mini_batch:
                     st = transition['s']
@@ -639,17 +645,40 @@ def deep_q_learning_with_experience_replay_control(
                     rt = transition['r']
                     st_p = transition['s_p']
                     tt = transition['t']
-
-                    target = rt
-
-                    if not tt:
-                        all_actions_p = transition['all_actions_p']
-                        q_s_p = q_value_brain.predict_batch_actions(st_p, all_actions_p)
-                        target += gamma * np.max(q_s_p)
+                    all_actions_p = transition['all_actions_p']
 
                     batch_states.append(st)
                     batch_actions.append(at)
-                    batch_targets.append(target)
+                    batch_rewards.append(rt)
+                    batch_terminals_coef.append(0.0 if tt else 1.0)
+
+                    batch_num_next_actions.append(len(all_actions_p))
+
+                    batch_next_states.extend([st_p] * len(all_actions_p))
+                    batch_all_next_actions.extend(all_actions_p)
+
+                batch_states = np.array(batch_states)
+                batch_actions = np.array(batch_actions)
+                batch_rewards = np.array(batch_rewards)
+                batch_terminals_coef = np.array(batch_terminals_coef)
+                batch_next_states = np.array(batch_next_states)
+                batch_all_next_actions = np.array(batch_all_next_actions)
+
+                all_batch_next_q_values = q_value_brain.predict_batch(batch_next_states, batch_all_next_actions)
+                batch_max_q_values = []
+                current_transition_next_action_index = 0
+                for i in range(mini_batch_size):
+                    if batch_num_next_actions[i] == 0:
+                        batch_max_q_values.append(0.0)
+                    else:
+                        batch_max_q_values.append(np.max(all_batch_next_q_values[current_transition_next_action_index:
+                                                                                 current_transition_next_action_index +
+                                                                                 batch_num_next_actions[i]]))
+                    current_transition_next_action_index += batch_num_next_actions[i]
+
+                batch_max_q_values = np.array(batch_max_q_values)
+
+                batch_targets = batch_rewards + batch_terminals_coef * gamma * batch_max_q_values
 
                 loss = q_value_brain.train_batch(np.array(batch_states),
                                                  np.array(batch_actions),
