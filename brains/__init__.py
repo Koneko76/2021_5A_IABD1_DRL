@@ -10,6 +10,47 @@ from tensorflow.keras.initializers import *
 import numpy as np
 
 
+class VSBrain:
+    def predict(self, s: np.ndarray) -> float:
+        raise NotImplementedError()
+
+    def predict_batch(self, states: np.ndarray) -> np.ndarray:
+        raise NotImplementedError()
+
+    def train_single(self, s: np.ndarray, target: float) -> float:
+        raise NotImplementedError()
+
+    def train_batch(self, states: np.ndarray, targets: np.ndarray) -> float:
+        raise NotImplementedError()
+
+
+class SimpleMLPVSBrain(VSBrain):
+    def __init__(self, state_dim: int,
+                 neurons_per_hidden_layer: int = 16,
+                 hidden_layers_count: int = 2,
+                 lr: float = 0.1):
+        state_input = Input(shape=(state_dim,))
+
+        hidden = state_input
+        for _ in range(hidden_layers_count):
+            hidden = Dense(neurons_per_hidden_layer, activation=tanh)(hidden)
+        output = Dense(1, activation=linear)(hidden)
+        self.model = Model(state_input, output)
+        self.model.compile(optimizer=Adam(lr=lr), loss=mean_squared_error)
+
+    def predict_batch(self, states: np.ndarray) -> np.ndarray:
+        return self.model.predict(states)
+
+    def predict(self, s: np.ndarray) -> float:
+        return self.model.predict(np.array([s]))[0][0]
+
+    def train_single(self, s: np.ndarray, target: float) -> float:
+        return self.model.train_on_batch(np.array([s]), np.array([target]))
+
+    def train_batch(self, states: np.ndarray, targets: np.ndarray) -> float:
+        return self.model.train_on_batch(states, targets)
+
+
 def vanilla_softmax_with_mask(signals, masks):
     exp_signals = keras.backend.exp(signals) * masks
     return exp_signals / keras.backend.sum(exp_signals, axis=-1, keepdims=True)

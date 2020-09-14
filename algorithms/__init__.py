@@ -5,10 +5,11 @@ import numpy as np
 
 import random
 
-from brains import QSABrain, PiSABrain, PiSWithMaskBrain
+from brains import QSABrain, PiSABrain, PiSWithMaskBrain, VSBrain
 from policies import tabular_uniform_random_policy
 from utils import step_until_the_end_of_the_episode_and_return_history
 
+import matplotlib.pyplot as plt
 
 def iterative_policy_evaluation(
         S: np.ndarray,
@@ -755,8 +756,13 @@ def reinforce_with_mask_without_baseline(
         pi_brain: PiSWithMaskBrain,
         episodes_count: int = 50000,
         max_steps_per_episode: int = 10,
-        gamma: float = 0.99
+        gamma: float = 0.99,
+        print_metrics_episode_count = 1000
 ) -> (np.ndarray, np.ndarray):
+
+    average_cumulated_rewards_list = []
+    current_average_cumulated_reward = 0.0
+
     for episode_id in range(episodes_count):
         deep_reset_func()
 
@@ -764,6 +770,13 @@ def reinforce_with_mask_without_baseline(
         action_indexes = []
         masks = []
         rewards = []
+
+        if episode_id % print_metrics_episode_count == 0:
+            average_cumulated_rewards_list.append(current_average_cumulated_reward / print_metrics_episode_count)
+            current_average_cumulated_reward = 0.0
+            plt.plot(average_cumulated_rewards_list)
+            plt.grid()
+            plt.show()
 
         cumulated_reward = 0
 
@@ -799,7 +812,87 @@ def reinforce_with_mask_without_baseline(
 
             G = rt + gamma * G
             target = np.zeros_like(mt)
-            target[at_idx] = G
+            target[at_idx] = gamma ** t * G
             loss += pi_brain.train_single(st, mt, target)
 
+        current_average_cumulated_reward += cumulated_reward
+
         print(f'{episode_id} ¤¤¤ {loss} ¤¤¤ {cumulated_reward}')
+
+
+def reinforce_with_mask_with_baseline(
+        deep_reset_func: Callable,
+        deep_get_state: Callable,
+        deep_get_action_mask: Callable,
+        deep_is_terminal_func: Callable,
+        deep_step_with_mask_func: Callable,
+        pi_brain: PiSWithMaskBrain,
+        v_brain: VSBrain,
+        episodes_count: int = 50000,
+        max_steps_per_episode: int = 10,
+        gamma: float = 0.99,
+        print_metrics_episode_count = 1000
+) -> (np.ndarray, np.ndarray):
+
+    average_cumulated_rewards_list = []
+    current_average_cumulated_reward = 0.0
+
+    for episode_id in range(episodes_count):
+        deep_reset_func()
+
+        states = []
+        action_indexes = []
+        masks = []
+        rewards = []
+
+        if episode_id % print_metrics_episode_count == 0:
+            average_cumulated_rewards_list.append(current_average_cumulated_reward / print_metrics_episode_count)
+            current_average_cumulated_reward = 0.0
+            plt.plot(average_cumulated_rewards_list)
+            plt.grid()
+            plt.show()
+
+        cumulated_reward = 0
+
+        step = 0
+        while not deep_is_terminal_func() and step < max_steps_per_episode:
+            s = deep_get_state()
+            m = deep_get_action_mask()
+
+            pi = pi_brain.predict(s, m)
+            sum_pi = np.sum(pi)
+            if sum_pi == 0:
+                a_idx = np.random.choice(np.arange(len(m)))
+            else:
+                a_idx = np.random.choice(np.arange(len(m)),
+                                         p=pi / sum_pi)
+            r, t = deep_step_with_mask_func(a_idx)
+
+            cumulated_reward += r
+            states.append(s)
+            action_indexes.append(a_idx)
+            masks.append(m)
+            rewards.append(r)
+
+            step += 1
+
+        v_loss = 0
+        pi_loss = 0
+        G = 0
+        for t in reversed(range(len(states))):
+            st = states[t]
+            at_idx = action_indexes[t]
+            mt = masks[t]
+            rt = rewards[t]
+
+            G = rt + gamma * G
+            delta = G - v_brain.predict(st)
+            target = np.zeros_like(mt)
+            target[at_idx] = gamma ** t * delta
+
+            v_loss += v_brain.train_single(st, G)
+            pi_loss += pi_brain.train_single(st, mt, target)
+
+        current_average_cumulated_reward += cumulated_reward
+
+        print(f'{episode_id} ¤¤¤ {"%.5f" % pi_loss} ¤¤¤ {"%.5f" % v_loss}')
